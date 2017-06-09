@@ -17,7 +17,7 @@ double compute_norm(double *u, int N)
     double norm = 0.0;
     for (i = 0; i <= N; i++){
         for(j=0;j<=N;j++){
-            norm += u[i+(N+1)*j] * u[i+(N+1)*j];
+            norm += u[j+(N+1)*i] * u[j+(N+1)*i];
 
         }
     }
@@ -27,7 +27,7 @@ double compute_norm(double *u, int N)
 /* set vector to zero */
 void set_zero (double *u, int N) {
     int i;
-    for (i = 0; i <= (N*N+2*N+1); i++)
+    for (i = 0; i <= (N*N+2*N); i++)
         u[i] = 0.0;
 }
 
@@ -36,7 +36,7 @@ void output_to_screen (double *u, int N) {
     int i,j;
     for (i = 0; i <= N; i++){
         for(j=0;j<=N;j++){
-            printf("%f ", u[i+(N+1)*j]);
+            printf("%f ", u[j+(N+1)*i]);
         }
     printf("\n");
     }
@@ -51,14 +51,15 @@ void coarsen(double *uf, double *uc, int N) {
             i = 2*ic;
             for (jc = 1; jc < N/2; jc++) {
                 j = 2*jc;
-                uc[ic + (N/2+1)*jc] = 0.25 * uf[i+(N+1)*j] \
-                + 0.125 * (uf[i-1 + j*(N+1)] + uf[i+1 + j*(N+1)] \
-                           + uf[i + (j+1)*(N+1)] + uf[i + (j-1)*(N+1)])\
-                + 0.0625 * (uf[i-1 + (j-1)*(N+1)]+ uf[i+1 + (j-1)*(N+1)]\
-                            + uf[i-1 + (j+1)*(N+1)] + uf[i+1 + (j+1)*(N+1)]);
+                uc[jc + (N/2+1)*ic] = 0.25 * uf[j+(N+1)*i] \
+                + 0.125 * (uf[(i-1)*(N+1) + j] + uf[(i+1)*(N+1) + j] \
+                           + uf[i*(N+1) + (j+1)] + uf[i*(N+1) + (j-1)])\
+                + 0.0625 * (uf[(i-1)*(N+1) + (j-1)]+ uf[(i+1)*(N+1) + (j-1)]\
+                            + uf[(i-1)*(N+1) + (j+1)] + uf[(i+1)*(N+1) + (j+1)]);
             }
         }
 }
+
 
 
 
@@ -76,23 +77,24 @@ void refine_and_add(double *u, double *uf, int N)
         {
             int c=j/2;
             int nc=(j+1)/2;
-            uf[i+(2*N+1)*j] += 0.25 * (u[r+(N+1)*c] + u[r+(N+1)*nc] \
-                                       +u[nr +(N+1)*c] + u[nr+(N+1)*nc]);
+            uf[j+(2*N+1)*i]+= 0.25 * (u[r*(N+1)+c] + u[(N+1)*r+nc] \
+                                       +u[(N+1)*nr +c] + u[(N+1)*nr+nc]);
         
         }
     }
 }
 
 
+
 /* compute residual vector */
+
 void compute_residual(double *u, double *rhs, double *res, int N,
                           double invhsq){
         int i,j,in;
         for (i = 1; i < N; i++) {
             for(j = 1; j < N; j++) {
-                in = i + (N+1)*j;
+                in = j + (N+1)*i;
                 res[in] = (rhs[in] - (4.*u[in] - u[in - 1] - u[in+1]- u[in-(N+1)] - u[in+(N+1)]) * invhsq);
-                res[in]=rhs[in];
             }
         }
 
@@ -101,6 +103,7 @@ void compute_residual(double *u, double *rhs, double *res, int N,
 
 
 /* compute residual and coarsen */
+
 void compute_and_coarsen_residual(double *u, double *rhs, double *resc,
                                   int N, double invhsq)
 {
@@ -109,6 +112,7 @@ void compute_and_coarsen_residual(double *u, double *rhs, double *resc,
     coarsen(resf, resc, N);
     free(resf);
 }
+
 
 
 /* Perform Jacobi iterations on u */
@@ -134,13 +138,13 @@ void jacobi(double *u, double *rhs, int N, double hsq, int ssteps)
 /* Perform Jacobi iterations on u */
 void jacobi(double *u, double *rhs, int N, double hsq, int ssteps){
     int i, j, steps;
-    double omega = 2./3;
+    double omega = .8;
     double *unew = calloc(sizeof(double), (N+1)*(N+1));
     for (steps = 0; steps < ssteps; steps++) {
-        for(j = 1; j < N; j++) {
-            for (i = 1; i < N; i++){
+        for(i = 1; i < N; i++) {
+            for (j = 1; j < N; j++){
                 int in = j + (N+1)*i;
-                unew[in] = .25*(hsq*rhs[in]+u[in-1]+u[in+1]+u[in+(N+1)]+u[in-(N+1)]);
+                unew[in] = (1-omega)*u[in]+omega*0.25*(hsq*rhs[in]+u[in-1]+u[in+1]+u[in+(N+1)]+u[in-(N+1)]);
             }
         }
         memcpy(u, unew, (N+1)*(N+1)*sizeof(double));
@@ -179,7 +183,7 @@ int main(int argc, char * argv[])
     int *N = (int*) calloc(sizeof(int), levels);
     double *invhsq = (double* ) calloc(sizeof(double), levels);
     double *hsq = (double* ) calloc(sizeof(double), levels);
-    double * res = (double *) calloc(sizeof(double), Nfine+1);
+    double * res = (double *) calloc(sizeof(double), (Nfine+1)*(Nfine+1));
     for (l = 0; l < levels; ++l) {
         N[l] = Nfine / (int) pow(2,l);
         double h = 1.0 / N[l];
@@ -193,7 +197,7 @@ int main(int argc, char * argv[])
     int j;
 for (i = 0; i <= N[0]; ++i) {
     for (j = 0; j <= N[0]; j++) {
-            rhs[0][i + (N[0]+1)*j] = 1.0;
+            rhs[0][j + (N[0]+1)*i] = 1.0;
         
         
         }
@@ -230,15 +234,16 @@ for (i = 0; i <= N[0]; ++i) {
         for (l = levels-1; l > 0; --l) {
             /* refine and add to u */
             refine_and_add(u[l], u[l-1], N[l]);
-            printf("test %f\n",compute_norm(u[l-1],N[l-1]));
-
             /* post-smoothing steps */
             jacobi(u[l-1], rhs[l-1], N[l-1], hsq[l-1], ssteps);
+            /*set_zero(res,Nfine);
+            compute_residual(u[l], rhs[l], res, N[l], invhsq[l]);
+            printf("test: %f\n",compute_norm(res,Nfine));*/
         }
-        
+
         if (0 == (iter % 1)) {
             compute_residual(u[0], rhs[0], res, N[0], invhsq[0]);
-            res_norm = compute_norm(rhs[0], N[0]);
+            res_norm = compute_norm(res, N[0]);
             printf("[Iter %d] Residual norm: %2.8f\n", iter, res_norm);
         }
     }
